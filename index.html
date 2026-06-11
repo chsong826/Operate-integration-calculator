@@ -1,68 +1,227 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Simple Integral Calculator</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.0/math.js"></script>
-    <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; padding: 50px; background: #f4f4f9; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 350px; }
-        input { width: 100%; margin: 10px 0; padding: 8px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        #result { margin-top: 20px; font-weight: bold; color: #333; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple Integration Calculator</title>
+
+<style>
+body{
+    font-family: Arial, sans-serif;
+    max-width: 1000px;
+    margin:20px auto;
+    padding:20px;
+    background:#f5f5f5;
+}
+
+.card{
+    background:white;
+    padding:20px;
+    border-radius:10px;
+    box-shadow:0 2px 10px rgba(0,0,0,0.1);
+}
+
+input{
+    padding:8px;
+    margin:5px;
+    width:180px;
+}
+
+button{
+    padding:10px 15px;
+    cursor:pointer;
+}
+
+#result{
+    margin-top:15px;
+    font-size:18px;
+}
+
+canvas{
+    border:1px solid #ccc;
+    margin-top:20px;
+    background:white;
+}
+</style>
 </head>
 <body>
 
-
 <div class="card">
-    <h3>Definite Integral</h3>
-    <label>Function f(x):</label>
-    <input type="text" id="func" placeholder="e.g., x^2">
-    
-    <label>Lower Bound (a):</label>
-    <input type="number" id="lower" value="0">
-    
-    <label>Upper Bound (b):</label>
-    <input type="number" id="upper" value="1">
-    
-    <button onclick="calculate()">Calculate Integral</button>
-    
-    <div id="result">Result: </div>
+    <h2>Integration Area Calculator</h2>
+
+    <p>
+        Function f(x):
+        <input id="func" value="x*x - 5*x + 6">
+    </p>
+
+    <p>
+        Lower Bound a:
+        <input id="a" type="number" value="4">
+    </p>
+
+    <p>
+        Upper Bound b:
+        <input id="b" type="number" value="5">
+    </p>
+
+    <button onclick="calculate()">Calculate</button>
+
+    <div id="result"></div>
+
+    <canvas id="graph" width="900" height="450"></canvas>
 </div>
 
-
 <script>
-    function calculate() {
-        const f_str = document.getElementById('func').value;
-        const a = parseFloat(document.getElementById('lower').value);
-        const b = parseFloat(document.getElementById('upper').value);
 
+function createFunction(expr){
+    return new Function("x", "return " + expr);
+}
 
-        try {
-            // Using numerical integration (simpson's rule approximation)
-            // math.js doesn't have a symbolic integral function, 
-            // so we evaluate the definite integral numerically.
-            const f = math.compile(f_str);
-            const steps = 1000;
-            const h = (b - a) / steps;
-            let sum = 0;
+function definiteIntegral(f,a,b,n=5000){
+    let h=(b-a)/n;
+    let sum=f(a)+f(b);
 
+    for(let i=1;i<n;i++){
+        let x=a+i*h;
+        sum += (i%2===0 ? 2 : 4)*f(x);
+    }
 
-            for (let i = 0; i < steps; i++) {
-                let x = a + i * h;
-                sum += f.evaluate({x: x}) * h;
-            }
+    return sum*h/3;
+}
 
+function absoluteArea(f,a,b,n=5000){
+    let h=(b-a)/n;
+    let area=0;
 
-            document.getElementById('result').innerText = "Result: " + sum.toFixed(6);
-        } catch (e) {
-            document.getElementById('result').innerText = "Error: Invalid input";
-        }
-    }
+    for(let i=0;i<n;i++){
+        let x1=a+i*h;
+        let x2=x1+h;
+
+        area += (Math.abs(f(x1))+Math.abs(f(x2)))/2*h;
+    }
+
+    return area;
+}
+
+function calculate(){
+
+    try{
+
+        let expr=document.getElementById("func").value;
+        let a=parseFloat(document.getElementById("a").value);
+        let b=parseFloat(document.getElementById("b").value);
+
+        let f=createFunction(expr);
+
+        let integral=definiteIntegral(f,a,b);
+        let area=absoluteArea(f,a,b);
+
+        document.getElementById("result").innerHTML=
+        `
+        <b>Definite Integral:</b> ${integral.toFixed(6)}<br>
+        <b>Area Between Curve and x-axis:</b> ${area.toFixed(6)}
+        `;
+
+        drawGraph(f,a,b);
+
+    }
+    catch(err){
+        alert("Invalid function expression.");
+    }
+}
+
+function drawGraph(f,a,b){
+
+    const canvas=document.getElementById("graph");
+    const ctx=canvas.getContext("2d");
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    let xmin=a-3;
+    let xmax=b+3;
+
+    let ymin=Infinity;
+    let ymax=-Infinity;
+
+    for(let i=0;i<=1000;i++){
+        let x=xmin+(xmax-xmin)*i/1000;
+        let y=f(x);
+
+        ymin=Math.min(ymin,y);
+        ymax=Math.max(ymax,y);
+    }
+
+    ymin-=1;
+    ymax+=1;
+
+    function sx(x){
+        return (x-xmin)/(xmax-xmin)*canvas.width;
+    }
+
+    function sy(y){
+        return canvas.height-(y-ymin)/(ymax-ymin)*canvas.height;
+    }
+
+    // axes
+    ctx.strokeStyle="black";
+    ctx.lineWidth=1;
+
+    ctx.beginPath();
+    ctx.moveTo(0,sy(0));
+    ctx.lineTo(canvas.width,sy(0));
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(sx(0),0);
+    ctx.lineTo(sx(0),canvas.height);
+    ctx.stroke();
+
+    // shaded area
+    ctx.fillStyle="rgba(0,120,255,0.25)";
+    ctx.beginPath();
+
+    ctx.moveTo(sx(a),sy(0));
+
+    for(let i=0;i<=500;i++){
+        let x=a+(b-a)*i/500;
+        ctx.lineTo(sx(x),sy(f(x)));
+    }
+
+    ctx.lineTo(sx(b),sy(0));
+    ctx.closePath();
+    ctx.fill();
+
+    // curve
+    ctx.strokeStyle="blue";
+    ctx.lineWidth=2;
+    ctx.beginPath();
+
+    for(let i=0;i<=1000;i++){
+        let x=xmin+(xmax-xmin)*i/1000;
+        let y=f(x);
+
+        if(i===0)
+            ctx.moveTo(sx(x),sy(y));
+        else
+            ctx.lineTo(sx(x),sy(y));
+    }
+
+    ctx.stroke();
+
+    // boundaries
+    ctx.strokeStyle="red";
+
+    [a,b].forEach(x=>{
+        ctx.beginPath();
+        ctx.moveTo(sx(x),0);
+        ctx.lineTo(sx(x),canvas.height);
+        ctx.stroke();
+    });
+}
+
+calculate();
+
 </script>
-
 
 </body>
 </html>

@@ -1,225 +1,474 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Simple Integration Calculator</title>
+<title>Integration Calculator</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script>
 
 <style>
 body{
-    font-family: Arial, sans-serif;
-    max-width: 1000px;
-    margin:20px auto;
-    padding:20px;
+    margin:0;
+    font-family:Arial, sans-serif;
+    display:flex;
+    height:100vh;
+}
+
+#sidebar{
+    width:350px;
     background:#f5f5f5;
+    overflow:auto;
+    padding:15px;
+    box-sizing:border-box;
+    border-right:1px solid #ccc;
 }
 
-.card{
-    background:white;
-    padding:20px;
-    border-radius:10px;
-    box-shadow:0 2px 10px rgba(0,0,0,0.1);
-}
-
-input{
-    padding:8px;
-    margin:5px;
-    width:180px;
-}
-
-button{
-    padding:10px 15px;
-    cursor:pointer;
-}
-
-#result{
-    margin-top:15px;
-    font-size:18px;
+#graphContainer{
+    flex:1;
+    position:relative;
 }
 
 canvas{
-    border:1px solid #ccc;
-    margin-top:20px;
+    width:100%;
+    height:100%;
+    display:block;
+}
+
+h2{
+    margin-top:0;
+}
+
+.function-row{
     background:white;
+    border:1px solid #ddd;
+    border-radius:8px;
+    padding:10px;
+    margin-bottom:10px;
+}
+
+.function-row input[type=text]{
+    width:100%;
+    box-sizing:border-box;
+    margin-top:5px;
+}
+
+button{
+    cursor:pointer;
+}
+
+.result-box{
+    background:white;
+    padding:10px;
+    border-radius:8px;
+    margin-top:15px;
+    border:1px solid #ddd;
+}
+
+.small{
+    font-size:13px;
+    color:#555;
 }
 </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>Integration Area Calculator</h2>
+<div id="sidebar">
 
-    <p>
-        Function f(x):
-        <input id="func" value="x*x - 5*x + 6">
-    </p>
+<h2>Integration Calculator</h2>
 
-    <p>
-        Lower Bound a:
-        <input id="a" type="number" value="4">
-    </p>
+<button onclick="addFunction()">+ Add Function</button>
 
-    <p>
-        Upper Bound b:
-        <input id="b" type="number" value="5">
-    </p>
+<div id="functions"></div>
 
-    <button onclick="calculate()">Calculate</button>
+<div class="result-box">
+<h3>Definite Integral</h3>
 
-    <div id="result"></div>
+<label>Function #</label>
+<select id="integralFunction"></select>
 
-    <canvas id="graph" width="900" height="450"></canvas>
+<br><br>
+
+<label>a:</label>
+<input id="a" type="number" value="0">
+
+<label>b:</label>
+<input id="b" type="number" value="5">
+
+<br><br>
+
+<button onclick="calculateIntegral()">
+Calculate Area
+</button>
+
+<p id="integralResult">Area =</p>
+</div>
+
+<div class="result-box">
+<h3>View Settings</h3>
+
+<label>X Min</label>
+<input id="xmin" type="number" value="-10">
+
+<label>X Max</label>
+<input id="xmax" type="number" value="10">
+
+<br><br>
+
+<label>Y Min</label>
+<input id="ymin" type="number" value="-10">
+
+<label>Y Max</label>
+<input id="ymax" type="number" value="10">
+
+<br><br>
+
+<button onclick="drawGraph()">
+Update View
+</button>
+</div>
+
+<div class="result-box">
+<h3>Function Help</h3>
+
+<div class="small">
+sin(x)<br>
+cos(x)<br>
+tan(x)<br>
+sqrt(x)<br>
+log(x)<br>
+exp(x)<br>
+x^2<br>
+3*x+1<br>
+sin(x)+x^2
+</div>
+</div>
+
+</div>
+
+<div id="graphContainer">
+<canvas id="graph"></canvas>
 </div>
 
 <script>
 
-function createFunction(expr){
-    return new Function("x", "return " + expr);
+const canvas=document.getElementById('graph');
+const ctx=canvas.getContext('2d');
+
+let functions=[];
+
+function resizeCanvas(){
+    canvas.width=canvas.parentElement.clientWidth;
+    canvas.height=canvas.parentElement.clientHeight;
+    drawGraph();
 }
 
-function definiteIntegral(f,a,b,n=5000){
-    let h=(b-a)/n;
-    let sum=f(a)+f(b);
+window.addEventListener('resize',resizeCanvas);
 
-    for(let i=1;i<n;i++){
-        let x=a+i*h;
-        sum += (i%2===0 ? 2 : 4)*f(x);
-    }
+function addFunction(expr='x^2'){
+    functions.push({
+        expr:expr,
+        color:'#'+Math.floor(Math.random()*16777215).toString(16),
+        visible:true
+    });
 
-    return sum*h/3;
+    refreshFunctionList();
 }
 
-function absoluteArea(f,a,b,n=5000){
-    let h=(b-a)/n;
-    let area=0;
-
-    for(let i=0;i<n;i++){
-        let x1=a+i*h;
-        let x2=x1+h;
-
-        area += (Math.abs(f(x1))+Math.abs(f(x2)))/2*h;
-    }
-
-    return area;
+function removeFunction(i){
+    functions.splice(i,1);
+    refreshFunctionList();
+    drawGraph();
 }
 
-function calculate(){
+function refreshFunctionList(){
+
+    const div=document.getElementById('functions');
+    div.innerHTML='';
+
+    const select=document.getElementById('integralFunction');
+    select.innerHTML='';
+
+    functions.forEach((f,i)=>{
+
+        const row=document.createElement('div');
+        row.className='function-row';
+
+        row.innerHTML=`
+        <b>Function ${i+1}</b>
+        <br>
+
+        <input type="checkbox"
+        ${f.visible?'checked':''}
+        onchange="toggleFunction(${i},this.checked)">
+        Show
+
+        <br><br>
+
+        Color:
+        <input type="color"
+        value="${f.color}"
+        onchange="changeColor(${i},this.value)">
+
+        <br><br>
+
+        f(x)=
+        <input type="text"
+        value="${f.expr}"
+        onchange="changeExpr(${i},this.value)">
+
+        <br><br>
+
+        <button onclick="showDerivative(${i})">
+        Derivative
+        </button>
+
+        <button onclick="removeFunction(${i})">
+        Delete
+        </button>
+
+        <div id="deriv${i}" class="small"></div>
+        `;
+
+        div.appendChild(row);
+
+        const opt=document.createElement('option');
+        opt.value=i;
+        opt.textContent=`Function ${i+1}`;
+        select.appendChild(opt);
+    });
+
+    drawGraph();
+}
+
+function toggleFunction(i,val){
+    functions[i].visible=val;
+    drawGraph();
+}
+
+function changeExpr(i,val){
+    functions[i].expr=val;
+    drawGraph();
+}
+
+function changeColor(i,val){
+    functions[i].color=val;
+    drawGraph();
+}
+
+function showDerivative(i){
 
     try{
 
-        let expr=document.getElementById("func").value;
-        let a=parseFloat(document.getElementById("a").value);
-        let b=parseFloat(document.getElementById("b").value);
+        const derivative=math.derivative(
+            functions[i].expr,
+            'x'
+        ).toString();
 
-        let f=createFunction(expr);
+        document.getElementById(
+            'deriv'+i
+        ).innerHTML=
+        'f\'(x) = '+derivative;
 
-        let integral=definiteIntegral(f,a,b);
-        let area=absoluteArea(f,a,b);
+    }catch(e){
 
-        document.getElementById("result").innerHTML=
-        `
-        <b>Definite Integral:</b> ${integral.toFixed(6)}<br>
-        <b>Area Between Curve and x-axis:</b> ${area.toFixed(6)}
-        `;
-
-        drawGraph(f,a,b);
-
-    }
-    catch(err){
-        alert("Invalid function expression.");
+        document.getElementById(
+            'deriv'+i
+        ).innerHTML='Invalid function';
     }
 }
 
-function drawGraph(f,a,b){
+function getBounds(){
 
-    const canvas=document.getElementById("graph");
-    const ctx=canvas.getContext("2d");
+    return {
+        xmin:Number(document.getElementById('xmin').value),
+        xmax:Number(document.getElementById('xmax').value),
+        ymin:Number(document.getElementById('ymin').value),
+        ymax:Number(document.getElementById('ymax').value)
+    };
+}
 
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+function xToCanvas(x,b){
+    return (x-b.xmin)/(b.xmax-b.xmin)*canvas.width;
+}
 
-    let xmin=a-3;
-    let xmax=b+3;
+function yToCanvas(y,b){
+    return canvas.height-
+    (y-b.ymin)/(b.ymax-b.ymin)*canvas.height;
+}
 
-    let ymin=Infinity;
-    let ymax=-Infinity;
+function drawAxes(b){
 
-    for(let i=0;i<=1000;i++){
-        let x=xmin+(xmax-xmin)*i/1000;
-        let y=f(x);
-
-        ymin=Math.min(ymin,y);
-        ymax=Math.max(ymax,y);
-    }
-
-    ymin-=1;
-    ymax+=1;
-
-    function sx(x){
-        return (x-xmin)/(xmax-xmin)*canvas.width;
-    }
-
-    function sy(y){
-        return canvas.height-(y-ymin)/(ymax-ymin)*canvas.height;
-    }
-
-    // axes
-    ctx.strokeStyle="black";
+    ctx.strokeStyle='#888';
     ctx.lineWidth=1;
 
+    const x0=xToCanvas(0,b);
+    const y0=yToCanvas(0,b);
+
     ctx.beginPath();
-    ctx.moveTo(0,sy(0));
-    ctx.lineTo(canvas.width,sy(0));
+    ctx.moveTo(0,y0);
+    ctx.lineTo(canvas.width,y0);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(sx(0),0);
-    ctx.lineTo(sx(0),canvas.height);
+    ctx.moveTo(x0,0);
+    ctx.lineTo(x0,canvas.height);
     ctx.stroke();
+}
 
-    // shaded area
-    ctx.fillStyle="rgba(0,120,255,0.25)";
-    ctx.beginPath();
+function drawGraph(){
 
-    ctx.moveTo(sx(a),sy(0));
+    const b=getBounds();
 
-    for(let i=0;i<=500;i++){
-        let x=a+(b-a)*i/500;
-        ctx.lineTo(sx(x),sy(f(x)));
-    }
+    ctx.clearRect(
+        0,0,
+        canvas.width,
+        canvas.height
+    );
 
-    ctx.lineTo(sx(b),sy(0));
-    ctx.closePath();
-    ctx.fill();
+    drawAxes(b);
 
-    // curve
-    ctx.strokeStyle="blue";
-    ctx.lineWidth=2;
-    ctx.beginPath();
+    functions.forEach(f=>{
 
-    for(let i=0;i<=1000;i++){
-        let x=xmin+(xmax-xmin)*i/1000;
-        let y=f(x);
+        if(!f.visible) return;
 
-        if(i===0)
-            ctx.moveTo(sx(x),sy(y));
-        else
-            ctx.lineTo(sx(x),sy(y));
-    }
+        try{
 
-    ctx.stroke();
+            const expr=
+            math.compile(f.expr);
 
-    // boundaries
-    ctx.strokeStyle="red";
+            ctx.strokeStyle=f.color;
+            ctx.lineWidth=2;
 
-    [a,b].forEach(x=>{
-        ctx.beginPath();
-        ctx.moveTo(sx(x),0);
-        ctx.lineTo(sx(x),canvas.height);
-        ctx.stroke();
+            let started=false;
+
+            ctx.beginPath();
+
+            for(let px=0;
+                px<canvas.width;
+                px++){
+
+                const x=
+                b.xmin+
+                px/canvas.width*
+                (b.xmax-b.xmin);
+
+                const y=
+                expr.evaluate({x});
+
+                const py=
+                yToCanvas(y,b);
+
+                if(!isFinite(py))
+                    continue;
+
+                if(!started){
+                    ctx.moveTo(px,py);
+                    started=true;
+                }else{
+                    ctx.lineTo(px,py);
+                }
+            }
+
+            ctx.stroke();
+
+        }catch(e){}
     });
 }
 
-calculate();
+function calculateIntegral(){
+
+    const idx=
+    Number(
+    document.getElementById(
+    'integralFunction').value);
+
+    const a=
+    Number(
+    document.getElementById('a').value);
+
+    const b=
+    Number(
+    document.getElementById('b').value);
+
+    try{
+
+        const expr=
+        math.compile(
+        functions[idx].expr);
+
+        let area=0;
+
+        const n=5000;
+        const dx=(b-a)/n;
+
+        for(let i=0;i<n;i++){
+
+            const x=a+i*dx;
+
+            area+=
+            expr.evaluate({x})*dx;
+        }
+
+        document.getElementById(
+        'integralResult'
+        ).innerHTML=
+        'Area = '+
+        area.toFixed(8);
+
+        shadeIntegral(
+            functions[idx],
+            a,b
+        );
+
+    }catch(e){
+
+        alert("Invalid function");
+    }
+}
+
+function shadeIntegral(func,a,b){
+
+    drawGraph();
+
+    const bounds=getBounds();
+
+    const expr=
+    math.compile(func.expr);
+
+    ctx.fillStyle=
+    func.color+'55';
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+    xToCanvas(a,bounds),
+    yToCanvas(0,bounds));
+
+    for(let i=0;i<=500;i++){
+
+        const x=
+        a+(b-a)*i/500;
+
+        const y=
+        expr.evaluate({x});
+
+        ctx.lineTo(
+        xToCanvas(x,bounds),
+        yToCanvas(y,bounds));
+    }
+
+    ctx.lineTo(
+    xToCanvas(b,bounds),
+    yToCanvas(0,bounds));
+
+    ctx.closePath();
+    ctx.fill();
+}
+
+addFunction("x^2");
+addFunction("sin(x)");
+
+resizeCanvas();
 
 </script>
 
